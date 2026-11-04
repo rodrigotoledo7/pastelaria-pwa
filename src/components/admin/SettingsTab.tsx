@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
 import { useStore } from '../../contexts/StoreContext';
-import { FaixaEntrega } from '../../@types/database';
+import { useAuth } from '../../contexts/AuthContext';
 import { formatBRL } from '../../lib/formatters';
 import { mockStore } from '../../lib/mockStore';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import {
+  createAdminUser,
+  getLocalAdminUsers,
+  removeAdminUser,
+  AdminUserRecord,
+} from '../../lib/userManagement';
 import {
   Save,
   Plus,
@@ -15,10 +21,17 @@ import {
   DollarSign,
   AlertCircle,
   CheckCircle2,
+  Users,
+  UserPlus,
+  Lock,
+  Mail,
+  ShieldCheck,
+  Loader2,
 } from 'lucide-react';
 
 export const SettingsTab: React.FC = () => {
   const { config, faixasEntrega, updateConfig, refreshStore } = useStore();
+  const { user: currentUser } = useAuth();
 
   const [nomeLoja, setNomeLoja] = useState(config.nome_loja);
   const [whatsappLoja, setWhatsappLoja] = useState(config.whatsapp_loja);
@@ -32,6 +45,13 @@ export const SettingsTab: React.FC = () => {
   const [newKmAte, setNewKmAte] = useState('');
   const [newValor, setNewValor] = useState('');
   const [savedFeedback, setSavedFeedback] = useState(false);
+
+  // Estados de Gerenciamento de Usuários
+  const [adminUsers, setAdminUsers] = useState<AdminUserRecord[]>(() => getLocalAdminUsers());
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [userFeedback, setUserFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const handleSaveGeneralConfig = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,6 +107,37 @@ export const SettingsTab: React.FC = () => {
       mockStore.saveFaixas(all);
     }
     await refreshStore();
+  };
+
+  const handleCreateAdminUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUserFeedback(null);
+    setIsCreatingUser(true);
+
+    const res = await createAdminUser(newUserEmail, newUserPassword);
+    setIsCreatingUser(false);
+
+    if (res.success) {
+      setUserFeedback({
+        type: 'success',
+        message: `Usuário ${newUserEmail} cadastrado com sucesso!`,
+      });
+      setAdminUsers(getLocalAdminUsers());
+      setNewUserEmail('');
+      setNewUserPassword('');
+      setTimeout(() => setUserFeedback(null), 4000);
+    } else {
+      setUserFeedback({
+        type: 'error',
+        message: res.error || 'Falha ao cadastrar usuário.',
+      });
+    }
+  };
+
+  const handleRemoveAdminUser = (id: string, email: string) => {
+    if (!confirm(`Deseja remover o usuário ${email} da lista de administradores?`)) return;
+    removeAdminUser(id);
+    setAdminUsers(getLocalAdminUsers());
   };
 
   return (
@@ -317,6 +368,158 @@ export const SettingsTab: React.FC = () => {
             {faixasEntrega[faixasEntrega.length - 1]?.km_ate || 0} km) serão considerados fora da
             área de entrega, e o app sugerirá a opção Retirada no balcão.
           </span>
+        </div>
+      </div>
+
+      {/* Seção: Gerenciamento de Usuários do Painel */}
+      <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs space-y-4 text-xs sm:text-sm">
+        <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+          <div>
+            <h2 className="font-bold text-gray-900 text-base flex items-center space-x-1.5">
+              <Users className="w-4 h-4 text-amber-600" />
+              <span>Usuários & Acessos do Painel</span>
+            </h2>
+            <p className="text-xs text-gray-500">
+              Cadastre novos administradores (gerente, funcionários) para gerenciar pedidos e cardápio
+            </p>
+          </div>
+        </div>
+
+        {userFeedback && (
+          <div
+            className={`p-3.5 rounded-2xl text-xs flex items-center space-x-2 animate-fade-in ${
+              userFeedback.type === 'success'
+                ? 'bg-emerald-50 border border-emerald-200 text-emerald-900'
+                : 'bg-red-50 border border-red-200 text-red-900'
+            }`}
+          >
+            {userFeedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+            )}
+            <span>{userFeedback.message}</span>
+          </div>
+        )}
+
+        {/* Formulário Rápido de Novo Usuário */}
+        <form
+          onSubmit={handleCreateAdminUser}
+          className="bg-amber-50/60 p-4 rounded-xl border border-amber-200 space-y-3"
+        >
+          <div className="font-bold text-gray-800 text-xs flex items-center space-x-1.5">
+            <UserPlus className="w-3.5 h-3.5 text-amber-600" />
+            <span>Cadastrar Novo Administrador</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                E-mail do Novo Usuário
+              </label>
+              <div className="relative">
+                <Mail className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" />
+                <input
+                  type="email"
+                  required
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  placeholder="gerente@pastelaria.com"
+                  className="w-full pl-8 pr-3 py-2 rounded-lg border border-gray-200 outline-none text-xs bg-white focus:border-amber-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                Senha Inicial (Mín. 6 caracteres)
+              </label>
+              <div className="relative">
+                <Lock className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" />
+                <input
+                  type="password"
+                  required
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                  placeholder="••••••••"
+                  minLength={6}
+                  className="w-full pl-8 pr-3 py-2 rounded-lg border border-gray-200 outline-none text-xs bg-white focus:border-amber-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-1">
+            <button
+              type="submit"
+              disabled={isCreatingUser}
+              className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-amber-500/20 active:scale-95 transition-all"
+            >
+              {isCreatingUser ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <UserPlus className="w-3.5 h-3.5" />
+              )}
+              <span>{isCreatingUser ? 'Cadastrando...' : 'Criar Usuário'}</span>
+            </button>
+          </div>
+        </form>
+
+        {/* Lista de Administradores Registrados */}
+        <div className="space-y-2">
+          <div className="text-xs font-bold text-gray-700">Administradores com Acesso:</div>
+          <div className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden">
+            {/* Usuário Atual Logado */}
+            <div className="p-3 flex items-center justify-between bg-gray-50/50">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-bold text-xs text-gray-800 flex items-center space-x-1.5">
+                    <span>{currentUser?.email || 'admin@pastelaria.com'}</span>
+                    <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">
+                      Você (Atual)
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-gray-400">Acesso total ao painel</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Usuários Cadastrados */}
+            {adminUsers.map((user) => (
+              <div
+                key={user.id}
+                className="p-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-xs">
+                    {user.email[0].toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="font-bold text-xs text-gray-800">{user.email}</div>
+                    <div className="text-[10px] text-gray-400">
+                      Cadastrado em {new Date(user.created_at).toLocaleDateString('pt-BR')}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <span className="text-[10px] font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                    {user.role}
+                  </span>
+                  <button
+                    onClick={() => handleRemoveAdminUser(user.id, user.email)}
+                    className="text-gray-400 hover:text-red-600 p-1 rounded transition-colors"
+                    title="Remover acesso"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

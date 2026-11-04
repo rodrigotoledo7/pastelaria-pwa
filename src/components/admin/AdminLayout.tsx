@@ -90,7 +90,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
             {/* Logout */}
             <button
-              onClick={logout}
+              onClick={() => logout()}
               className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
               title="Sair do painel"
             >

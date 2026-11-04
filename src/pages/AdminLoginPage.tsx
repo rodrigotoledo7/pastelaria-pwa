@@ -1,24 +1,30 @@
 import React, { useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { Shield, Lock, Mail, ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
+import { useAuth, STORAGE_KEY_SAVED_EMAIL, STORAGE_KEY_REMEMBER_ME } from '../contexts/AuthContext';
+import { Shield, Lock, Mail, ArrowLeft, Loader2, AlertCircle, Clock } from 'lucide-react';
 
 interface AdminLoginPageProps {
   onBackToMenu: () => void;
 }
 
 export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onBackToMenu }) => {
-  const { login } = useAuth();
-  const [email, setEmail] = useState('');
+  const { login, logoutReason, clearLogoutReason } = useAuth();
+  const [email, setEmail] = useState(() => {
+    return localStorage.getItem(STORAGE_KEY_SAVED_EMAIL) || '';
+  });
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(() => {
+    return localStorage.getItem(STORAGE_KEY_REMEMBER_ME) !== 'false';
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    clearLogoutReason();
     setLoading(true);
 
-    const res = await login(email.trim(), password);
+    const res = await login(email.trim(), password, rememberMe);
     setLoading(false);
 
     if (!res.success) {
@@ -29,6 +35,7 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onBackToMenu }) 
   const handleUseDemo = () => {
     setEmail('admin@pastelaria.com');
     setPassword('admin123');
+    setRememberMe(true);
   };
 
   return (
@@ -53,6 +60,16 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onBackToMenu }) 
             Acesso exclusivo para gerenciar pedidos, cardápio e taxas
           </p>
         </div>
+
+        {logoutReason && (
+          <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start space-x-2">
+            <Clock className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <span className="font-semibold block">Aviso de Sessão</span>
+              <span>{logoutReason}</span>
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-center space-x-2">
@@ -96,6 +113,18 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onBackToMenu }) 
             </div>
           </div>
 
+          <div className="flex items-center justify-between py-1">
+            <label className="flex items-center space-x-2 text-xs text-gray-700 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500 border-gray-300 accent-amber-500"
+              />
+              <span className="font-semibold text-gray-700">Lembrar informações de acesso</span>
+            </label>
+          </div>
+
           <button
             type="submit"
             disabled={loading}
@@ -107,6 +136,11 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onBackToMenu }) 
               <span>Entrar no Painel</span>
             )}
           </button>
+
+          <div className="flex items-center justify-center space-x-1.5 text-[11px] text-gray-400 pt-1">
+            <Clock className="w-3.5 h-3.5 text-gray-400" />
+            <span>Encerramento automático após tempo ocioso</span>
+          </div>
         </form>
 
         <div className="mt-6 pt-4 border-t border-gray-100 text-center">
