@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Categoria, Produto, Opcional } from '../../@types/database';
 import { formatBRL } from '../../lib/formatters';
 import { mockStore } from '../../lib/mockStore';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { uploadProductImage } from '../../lib/imageUpload';
 import {
   Plus,
   Edit2,
@@ -12,6 +13,9 @@ import {
   XCircle,
   FileSpreadsheet,
   X,
+  Camera,
+  Loader2,
+  Link as LinkIcon,
 } from 'lucide-react';
 
 interface MenuManagerTabProps {
@@ -38,6 +42,10 @@ export const MenuManagerTab: React.FC<MenuManagerTabProps> = ({
   const [prodCategoria, setProdCategoria] = useState('');
   const [prodImagem, setProdImagem] = useState('');
   const [prodDisponivel, setProdDisponivel] = useState(true);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Estados de nova categoria
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
@@ -60,6 +68,8 @@ export const MenuManagerTab: React.FC<MenuManagerTabProps> = ({
     setProdCategoria(selectedCatId || categorias[0]?.id || '');
     setProdImagem('');
     setProdDisponivel(true);
+    setIsUploadingImage(false);
+    setShowUrlInput(false);
     setIsProductModalOpen(true);
   };
 
@@ -71,7 +81,55 @@ export const MenuManagerTab: React.FC<MenuManagerTabProps> = ({
     setProdCategoria(p.categoria_id);
     setProdImagem(p.imagem_url || '');
     setProdDisponivel(p.disponivel);
+    setIsUploadingImage(false);
+    setShowUrlInput(false);
     setIsProductModalOpen(true);
+  };
+
+  const handleProcessImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, selecione um arquivo de imagem válido (PNG, JPG, WEBP).');
+      return;
+    }
+    setIsUploadingImage(true);
+    try {
+      const url = await uploadProductImage(file);
+      setProdImagem(url);
+    } catch (err) {
+      console.error('Erro ao processar imagem:', err);
+      alert('Não foi possível processar a imagem. Tente novamente.');
+    } finally {
+      setIsUploadingImage(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleProcessImageFile(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleProcessImageFile(file);
+    }
   };
 
   const handleToggleProductAvailability = async (produto: Produto) => {
@@ -517,7 +575,7 @@ export const MenuManagerTab: React.FC<MenuManagerTabProps> = ({
       {/* Modal Adicionar/Editar Produto */}
       {isProductModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-5 overflow-hidden">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-5 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <h3 className="font-bold text-gray-900 text-base">
                 {editingProduct ? 'Editar Pastel / Produto' : 'Cadastrar Novo Item'}
@@ -592,16 +650,111 @@ export const MenuManagerTab: React.FC<MenuManagerTabProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  URL da Foto (ou Unsplash)
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block font-bold text-gray-700">
+                    Foto do Produto
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowUrlInput(!showUrlInput)}
+                    className="text-[11px] text-amber-600 hover:text-amber-700 flex items-center space-x-1 font-medium"
+                  >
+                    <LinkIcon className="w-3 h-3" />
+                    <span>{showUrlInput ? 'Ocultar URL' : 'Ou colar link direto'}</span>
+                  </button>
+                </div>
+
                 <input
-                  type="url"
-                  value={prodImagem}
-                  onChange={(e) => setProdImagem(e.target.value)}
-                  placeholder="https://images.unsplash.com/..."
-                  className="w-full p-2.5 rounded-xl border border-gray-200 outline-none focus:border-amber-500"
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageFileChange}
+                  className="hidden"
                 />
+
+                {prodImagem ? (
+                  <div className="relative rounded-2xl overflow-hidden border border-gray-200 bg-gray-50 p-2">
+                    <div className="relative w-full h-36 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center">
+                      <img
+                        src={prodImagem}
+                        alt="Prévia do produto"
+                        className="w-full h-full object-cover"
+                      />
+                      {isUploadingImage && (
+                        <div className="absolute inset-0 bg-black/50 backdrop-blur-xs flex flex-col items-center justify-center text-white">
+                          <Loader2 className="w-6 h-6 animate-spin text-amber-400 mb-1" />
+                          <span className="text-xs font-semibold">Enviando nova foto...</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between mt-2 pt-1 border-t border-gray-100 px-1">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingImage}
+                        className="text-xs text-amber-600 hover:text-amber-700 font-bold flex items-center space-x-1 py-1"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        <span>Trocar foto</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProdImagem('')}
+                        disabled={isUploadingImage}
+                        className="text-xs text-red-600 hover:text-red-700 font-bold flex items-center space-x-1 py-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remover foto</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    onClick={() => !isUploadingImage && fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all flex flex-col items-center justify-center ${
+                      isDraggingOver
+                        ? 'border-amber-500 bg-amber-50/50'
+                        : 'border-gray-300 hover:border-amber-400 hover:bg-gray-50'
+                    }`}
+                  >
+                    {isUploadingImage ? (
+                      <div className="py-3 flex flex-col items-center text-amber-600">
+                        <Loader2 className="w-7 h-7 animate-spin mb-2" />
+                        <span className="font-bold text-xs">Processando e enviando foto...</span>
+                      </div>
+                    ) : (
+                      <div className="py-2 flex flex-col items-center text-gray-500">
+                        <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mb-2 shadow-xs">
+                          <Upload className="w-5 h-5" />
+                        </div>
+                        <span className="font-bold text-gray-800 text-xs">
+                          Clique para escolher ou arraste a foto
+                        </span>
+                        <span className="text-[11px] text-gray-400 mt-0.5">
+                          PNG, JPG ou WEBP (câmera ou galeria)
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {showUrlInput && (
+                  <div className="mt-2.5 pt-2 border-t border-gray-100">
+                    <label className="block text-[11px] font-semibold text-gray-500 mb-1">
+                      Ou informe uma URL externa da foto:
+                    </label>
+                    <input
+                      type="url"
+                      value={prodImagem}
+                      onChange={(e) => setProdImagem(e.target.value)}
+                      placeholder="https://images.unsplash.com/..."
+                      className="w-full p-2 rounded-xl border border-gray-200 outline-none focus:border-amber-500 text-xs"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center space-x-2 pt-1">
@@ -627,9 +780,13 @@ export const MenuManagerTab: React.FC<MenuManagerTabProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold shadow-md shadow-amber-500/20"
+                  disabled={isUploadingImage}
+                  className={`px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold shadow-md shadow-amber-500/20 flex items-center space-x-1.5 ${
+                    isUploadingImage ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
                 >
-                  Salvar Produto
+                  {isUploadingImage && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <span>Salvar Produto</span>
                 </button>
               </div>
             </form>
